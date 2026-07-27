@@ -58,6 +58,8 @@ let store = {
   },
   masters: [],
   slaves: [],
+  unassigned: [],
+  roleAssignments: {}, // accountNumber -> 'MASTER' | 'SLAVE', set from the dashboard, not the EA
   trades: [],
   executionLogs: [],
   pendingEaCommands: []
@@ -67,11 +69,13 @@ let store = {
 const EA_ONLINE_WINDOW_MS = 15000;
 let lastEaSyncAt = null;
 
-// Load existing real data if present
+// Load existing real data if present, merged onto the defaults above so fields added in later
+// versions of this file (e.g. unassigned/roleAssignments) aren't wiped out by an older store.json
 if (fs.existsSync(DATA_FILE)) {
   try {
     const fileData = fs.readFileSync(DATA_FILE, 'utf8');
-    store = JSON.parse(fileData);
+    const loaded = JSON.parse(fileData);
+    store = Object.assign({}, store, loaded, { stats: Object.assign({}, store.stats, loaded.stats) });
     console.log('Loaded persistent real MT5 account datastore.');
   } catch (e) {
     console.error('Error loading store.json:', e);
@@ -159,7 +163,8 @@ function updateRealStats() {
     trades: store.trades,
     stats: store.stats,
     masters: store.masters,
-    slaves: store.slaves
+    slaves: store.slaves,
+    unassigned: store.unassigned
   });
 }
 
@@ -212,8 +217,88 @@ const server = http.createServer((req, res) => {
       res.writeHead(200);
       return res.end(JSON.stringify({
         masters: store.masters,
-        slaves: store.slaves
+        slaves: store.slaves,
+        unassigned: store.unassigned
       }));
+    }
+
+    // POST /api/accounts/:accountNumber/role — dashboard-driven Master/Slave assignment.
+    // This is the only place an account's role is decided; the EA's own role input is ignored.
+    if (req.method === 'POST' && /^\/api\/accounts\/[^/]+\/role$/.test(pathname)) {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const accountNo = decodeURIComponent(pathname.split('/')[3]);
+          const data = JSON.parse(body || '{}');
+          const role = data.role;
+
+          if (role !== 'MASTER' && role !== 'SLAVE') {
+            res.writeHead(400);
+            return res.end(JSON.stringify({ error: 'role must be MASTER or SLAVE' }));
+          }
+
+          const pendingIndex = store.unassigned.findIndex(a => a.accountNumber === accountNo);
+          if (pendingIndex === -1) {
+            res.writeHead(404);
+            return res.end(JSON.stringify({ error: 'No unassigned connected account with that number' }));
+          }
+          const acc = store.unassigned[pendingIndex];
+          store.unassigned.splice(pendingIndex, 1);
+          store.roleAssignments[accountNo] = role;
+
+          if (role === 'MASTER') {
+            store.masters.push({
+              id: 'MST-' + accountNo,
+              accountNumber: accountNo,
+              accountName: acc.accountName,
+              broker: acc.broker,
+              server: acc.server,
+              balance: acc.balance,
+              equity: acc.equity,
+              margin: acc.margin,
+              freeMargin: acc.freeMargin,
+              floatingPnL: acc.floatingPnL,
+              openPositions: 0,
+              status: 'active',
+              lastSeen: acc.lastSeen
+            });
+          } else {
+            store.slaves.push({
+              id: 'SLV-' + accountNo,
+              accountNumber: accountNo,
+              accountName: acc.accountName,
+              broker: acc.broker,
+              server: acc.server,
+              balance: acc.balance,
+              equity: acc.equity,
+              margin: acc.margin,
+              freeMargin: acc.freeMargin,
+              floatingPnL: acc.floatingPnL,
+              status: 'active',
+              lastSeen: acc.lastSeen,
+              latencyMs: acc.latencyMs,
+              riskSettings: { mode: 'multiplier', multiplier: 1.0, fixedLot: 0.1, maxSpreadPips: 3.0 }
+            });
+          }
+
+          store.executionLogs.unshift({
+            id: Date.now(),
+            timestamp: new Date().toISOString(),
+            event: 'ROLE_ASSIGNED',
+            account: accountNo,
+            details: `Account ${accountNo} assigned as ${role} from the dashboard`
+          });
+
+          updateRealStats();
+          res.writeHead(200);
+          return res.end(JSON.stringify({ success: true }));
+        } catch (e) {
+          res.writeHead(400);
+          return res.end(JSON.stringify({ error: 'Invalid JSON payload' }));
+        }
+      });
+      return;
     }
 
     // POST /api/accounts/master
@@ -247,6 +332,7 @@ const server = http.createServer((req, res) => {
             };
             store.masters.push(master);
           }
+          store.roleAssignments[master.accountNumber] = 'MASTER';
 
           updateRealStats();
           res.writeHead(201);
@@ -303,6 +389,11 @@ const server = http.createServer((req, res) => {
             newSlave.riskSettings.multiplier = parseFloat(data.multiplier || newSlave.riskSettings.multiplier);
             newSlave.server = data.server || newSlave.server;
           }
+          store.roleAssignments[newSlave.accountNumber] = 'SLAVE';
+
+          // If this account had already connected via the EA before being pre-registered here,
+          // it would be sitting in the unassigned queue — clear it out now that it's classified.
+          store.unassigned = store.unassigned.filter(a => a.accountNumber !== newSlave.accountNumber);
 
           store.executionLogs.unshift({
             id: Date.now(),
@@ -365,7 +456,8 @@ const server = http.createServer((req, res) => {
       const slaveId = pathname.split('/')[4];
       const index = store.slaves.findIndex(s => s.id === slaveId);
       if (index !== -1) {
-        store.slaves.splice(index, 1);
+        const [removed] = store.slaves.splice(index, 1);
+        delete store.roleAssignments[removed.accountNumber]; // EA reconnecting will land back in "unassigned"
         updateRealStats();
         res.writeHead(200);
         return res.end(JSON.stringify({ success: true, removedId: slaveId }));
@@ -429,10 +521,34 @@ const server = http.createServer((req, res) => {
         try {
           const data = JSON.parse(body || '{}');
           const accountNo = String(data.accountNumber);
-          const isMaster = data.role === 'MASTER';
+          const assignedRole = store.roleAssignments[accountNo]; // dashboard is the source of truth, not the EA's own role input
           lastEaSyncAt = Date.now();
 
-          if (isMaster) {
+          if (!assignedRole) {
+            // Newly connected account with no dashboard role assignment yet — surface it for the
+            // user to classify, instead of guessing from whatever the EA happened to send.
+            let pending = store.unassigned.find(a => a.accountNumber === accountNo);
+            if (!pending) {
+              pending = { accountNumber: accountNo, accountName: data.accountName || `MT5 Account (${accountNo})` };
+              store.unassigned.push(pending);
+            }
+            pending.broker = data.broker || data.server;
+            pending.server = data.server;
+            pending.balance = parseFloat(data.balance || 0);
+            pending.equity = parseFloat(data.equity || 0);
+            pending.margin = parseFloat(data.margin || 0);
+            pending.freeMargin = parseFloat(data.freeMargin || 0);
+            pending.floatingPnL = parseFloat((pending.equity - pending.balance).toFixed(2));
+            pending.lastSeen = new Date().toISOString();
+            pending.latencyMs = typeof data.pingMs === 'number' ? data.pingMs : null;
+            pending.eaReportedRole = data.role || null; // shown as a hint in the UI, not authoritative
+
+            updateRealStats();
+            res.writeHead(200);
+            return res.end(JSON.stringify({ status: 'ok', masterTrades: store.trades, commands: [] }));
+          }
+
+          if (assignedRole === 'MASTER') {
             let master = store.masters.find(m => m.accountNumber === accountNo);
             if (!master) {
               master = {

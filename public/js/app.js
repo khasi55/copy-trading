@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     stats: { totalEquity: 0, totalBalance: 0, dailyPnL: 0, winRate: null, activeCopiersCount: 0, eaEngineOnline: false, eaEngineLatencyMs: null },
     masters: [],
     slaves: [],
+    unassigned: [],
     trades: [],
     logs: [],
     equityHistory: []
@@ -25,12 +26,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const mastersListEl = document.getElementById('masters-list');
   const slavesListEl = document.getElementById('slaves-list');
+  const unassignedSectionEl = document.getElementById('unassigned-section');
+  const unassignedListEl = document.getElementById('unassigned-list');
   const tradesTableBody = document.getElementById('trades-table-body');
   const logsTableBody = document.getElementById('logs-table-body');
 
   const addSlaveModal = document.getElementById('add-slave-modal');
   const eaModal = document.getElementById('ea-modal');
-  
+  const tokenModal = document.getElementById('token-modal');
+  const tokenForm = document.getElementById('token-form');
+  const tokenInput = document.getElementById('token-input');
+  const tokenErrorEl = document.getElementById('token-error');
+
   const addSlaveBtn = document.getElementById('btn-add-slave');
   const openEaHubBtn = document.getElementById('btn-ea-hub');
   const emergencyCloseBtn = document.getElementById('btn-emergency-close');
@@ -45,27 +52,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let pendingTokenPrompt = null;
 
-  // Coalesces concurrent 401s (e.g. the 3 parallel calls on first load) into a single prompt dialog
-  function promptForApiToken() {
+  // Coalesces concurrent 401s (e.g. the 3 parallel calls on first load) into a single modal instance
+  function promptForApiToken(showError) {
     if (pendingTokenPrompt) return pendingTokenPrompt;
-    pendingTokenPrompt = Promise.resolve().then(() => {
-      const entered = prompt('Enter the dashboard API token (set as EA_API_TOKEN on the server):');
-      if (entered) localStorage.setItem(TOKEN_STORAGE_KEY, entered.trim());
-      pendingTokenPrompt = null;
-      return getApiToken();
+    pendingTokenPrompt = new Promise((resolve) => {
+      tokenErrorEl.style.display = showError ? 'block' : 'none';
+      tokenInput.value = '';
+      tokenModal.classList.add('active');
+      setTimeout(() => tokenInput.focus(), 0);
+
+      const onSubmit = (e) => {
+        e.preventDefault();
+        const entered = tokenInput.value.trim();
+        if (!entered) return;
+        localStorage.setItem(TOKEN_STORAGE_KEY, entered);
+        tokenModal.classList.remove('active');
+        tokenForm.removeEventListener('submit', onSubmit);
+        pendingTokenPrompt = null;
+        resolve(entered);
+      };
+      tokenForm.addEventListener('submit', onSubmit);
     });
     return pendingTokenPrompt;
   }
 
-  async function apiFetch(url, options = {}, isRetry = false) {
+  async function apiFetch(url, options = {}, attempt = 0) {
     const headers = Object.assign({}, options.headers || {});
     const token = getApiToken();
     if (token) headers['X-API-Token'] = token;
 
     const res = await fetch(url, Object.assign({}, options, { headers }));
-    if (res.status === 401 && !isRetry) {
-      const newToken = await promptForApiToken();
-      if (newToken) return apiFetch(url, options, true);
+    if (res.status === 401 && attempt < 5) {
+      await promptForApiToken(attempt > 0);
+      return apiFetch(url, options, attempt + 1);
     }
     return res;
   }
@@ -83,6 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const accounts = await accountsRes.json();
       appState.masters = accounts.masters || [];
       appState.slaves = accounts.slaves || [];
+      appState.unassigned = accounts.unassigned || [];
 
       const tradeData = await tradesRes.json();
       appState.trades = tradeData.trades || [];
@@ -109,7 +129,9 @@ document.addEventListener('DOMContentLoaded', () => {
           appState.stats = payload.data.stats || {};
           appState.masters = payload.data.masters || [];
           appState.slaves = payload.data.slaves || [];
-          
+          appState.unassigned = payload.data.unassigned || [];
+
+
           if (appState.stats.totalEquity !== undefined) {
             appState.equityHistory.push(appState.stats.totalEquity);
             if (appState.equityHistory.length > 30) appState.equityHistory.shift();
@@ -175,12 +197,53 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderAccounts() {
+    // Render accounts that have connected via the EA but have no Master/Slave assignment yet
+    if (unassignedSectionEl && unassignedListEl) {
+      if (appState.unassigned.length === 0) {
+        unassignedSectionEl.style.display = 'none';
+      } else {
+        unassignedSectionEl.style.display = '';
+        unassignedListEl.innerHTML = appState.unassigned.map(a => `
+          <div class="account-card">
+            <div class="account-card-header">
+              <div>
+                <div class="account-name">${escapeHtml(a.accountName)}</div>
+                <div class="account-broker">${escapeHtml(a.broker || '')} • ${escapeHtml(a.server || '')}</div>
+              </div>
+              <span class="status-badge status-paused">UNASSIGNED</span>
+            </div>
+            <div class="account-stats-row">
+              <div class="stat-item">
+                <label>Balance</label>
+                <span>$${(a.balance || 0).toLocaleString()}</span>
+              </div>
+              <div class="stat-item">
+                <label>Equity</label>
+                <span>$${(a.equity || 0).toLocaleString()}</span>
+              </div>
+              <div class="stat-item">
+                <label>MT5 Login ID</label>
+                <span>${escapeHtml(a.accountNumber)}</span>
+              </div>
+            </div>
+            <div class="account-actions">
+              <span style="color: var(--text-muted);">Choose this account's role:</span>
+              <div>
+                <button class="btn btn-primary" style="padding: 4px 8px; font-size: 11px;" onclick="assignAccountRole('${a.accountNumber}', 'MASTER')">Set as Master</button>
+                <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="assignAccountRole('${a.accountNumber}', 'SLAVE')">Set as Slave</button>
+              </div>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
     // Render Master Accounts
     if (appState.masters.length === 0) {
       mastersListEl.innerHTML = `
         <div style="padding: 20px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-color); border-radius: 8px;">
           No MT5 Master connected yet.<br>
-          <small style="color: var(--text-dim);">Attach <strong>ZenCopyTrader.mq5</strong> in Master Mode on your MT5 terminal.</small>
+          <small style="color: var(--text-dim);">Install <strong>ZenCopyTrader.mq5</strong> on the account's MT5 terminal, then set its role as Master above once it connects.</small>
         </div>
       `;
     } else {
@@ -369,6 +432,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- Handlers & Actions ---
+  window.assignAccountRole = async (accountNumber, role) => {
+    try {
+      const res = await apiFetch(`/api/accounts/${encodeURIComponent(accountNumber)}/role`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role })
+      });
+      if (!res.ok) {
+        const result = await res.json().catch(() => ({}));
+        alert(result.error || 'Failed to assign account role');
+        return;
+      }
+      fetchInitialData();
+    } catch (e) {
+      alert('Failed to assign account role');
+    }
+  };
+
   window.toggleSlaveStatus = async (id, status) => {
     try {
       await apiFetch(`/api/accounts/slave/${id}/status`, {
@@ -467,7 +548,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const eaWebhookUrlEl = document.getElementById('ea-webhook-url');
   if (eaWebhookUrlEl) eaWebhookUrlEl.textContent = `${window.location.origin}/api/ea/sync`;
 
-  fetchInitialData();
-  initSSE();
+  // Wait for a valid token (fetchInitialData resolves the token-gate modal on 401) before
+  // opening the SSE stream, since EventSource can't be redirected mid-flight with a new URL.
+  fetchInitialData().then(initSSE);
   window.addEventListener('resize', drawEquityChart);
 });

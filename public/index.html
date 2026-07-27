@@ -102,6 +102,17 @@
       </article>
     </section>
 
+    <!-- Newly Connected Accounts Awaiting Master/Slave Assignment -->
+    <section id="unassigned-section" class="card" style="display: none; border-color: var(--primary);">
+      <div class="card-title-bar">
+        <h2>🔌 Connected — Awaiting Role Assignment</h2>
+        <span style="font-size: 13px; color: var(--text-muted);">EA is live and reporting. Choose Master or Slave for each account below.</span>
+      </div>
+      <div id="unassigned-list" class="accounts-grid">
+        <!-- Rendered dynamically -->
+      </div>
+    </section>
+
     <!-- Main Content Row: Equity Growth Curve & Master/Slave Accounts -->
     <div class="main-grid">
       
@@ -292,6 +303,28 @@
         </a>
         <button type="button" class="btn btn-secondary modal-close">Close</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal: API Token Gate -->
+  <div id="token-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>🔒 Enter Dashboard API Token</h3>
+      </div>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+        This server requires the shared API token to read or control any account data. Enter the same value configured as <strong style="color: var(--primary);">EA_API_TOKEN</strong> on the server.
+      </p>
+      <form id="token-form">
+        <div class="form-group">
+          <label>API Token</label>
+          <input type="password" name="token" id="token-input" class="form-control" placeholder="Paste your API token" required autocomplete="off">
+        </div>
+        <div id="token-error" style="color: var(--accent-red); font-size: 12px; margin-bottom: 8px; display: none;">Invalid token. Try again.</div>
+        <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
+          <button type="submit" class="btn btn-primary">Connect</button>
+        </div>
+      </form>
     </div>
   </div>
 
