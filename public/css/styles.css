@@ -302,6 +302,14 @@ header.navbar {
   position: relative;
 }
 
+.chart-container canvas {
+  /* Pins the rendered size to the container regardless of the canvas's internal pixel buffer,
+     otherwise each redraw reads back its own already-doubled size and grows without bound. */
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 /* Account Cards Grid */
 .accounts-grid {
   display: grid;

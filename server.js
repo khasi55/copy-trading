@@ -499,6 +499,22 @@ const server = http.createServer((req, res) => {
 
     // POST /api/ea/auto-install
     if (req.method === 'POST' && pathname === '/api/ea/auto-install') {
+      // Auto-install can only ever find MT5 on the machine this Node process runs on. When the
+      // server is hosted remotely (Railway, etc.), that's the container's own filesystem — never
+      // the visitor's computer — so scanning for it there is meaningless and must not claim success.
+      const remoteAddr = req.socket.remoteAddress || '';
+      const isLoopback = remoteAddr === '127.0.0.1' || remoteAddr === '::1' || remoteAddr === '::ffff:127.0.0.1';
+
+      if (!isLoopback) {
+        const result = {
+          success: false,
+          message: 'Auto-Install only works when this dashboard runs on the same computer as your MT5 terminal. This server is hosted remotely, so it cannot reach your machine — use "Manual Download (.mq5)" instead and drag the file into your own MT5 MQL5/Experts folder.',
+          installedPaths: []
+        };
+        res.writeHead(200);
+        return res.end(JSON.stringify(result));
+      }
+
       const result = installEA();
 
       store.executionLogs.unshift({
