@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zenvest MT5 Copy Trading Dashboard | Enterprise EA Engine</title>
+  <meta name="description" content="Enterprise MT5 Copy Trading Dashboard & EA Signal Bridge with Slave Account Management, real MT5 EA telemetry, and real-time execution monitoring.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- Top Navigation Header -->
+    <header class="navbar">
+      <div class="brand">
+        <div class="brand-logo">Z</div>
+        <div class="brand-text">
+          <h1>Zenvest MT5 Copier</h1>
+          <span>Enterprise EA Bridge & Slave Manager</span>
+        </div>
+      </div>
+
+      <div class="nav-actions">
+        <div class="status-pill">
+          <div id="ea-status-dot" class="status-dot"></div>
+          <span id="ea-status-text">Waiting for EA connection...</span>
+        </div>
+        <button id="btn-auto-install" class="btn btn-secondary" style="border-color: var(--accent-green); color: var(--accent-green);">
+          🚀 Auto-Install EA to MT5
+        </button>
+        <button id="btn-ea-hub" class="btn btn-secondary">
+          ⚡ MQL5 EA Hub
+        </button>
+        <button id="btn-add-slave" class="btn btn-primary">
+          + Link Slave MT5 Account
+        </button>
+        <button id="btn-emergency-close" class="btn btn-danger">
+          🚨 Emergency Close All
+        </button>
+      </div>
+    </header>
+
+    <!-- Top Key Performance Metrics Grid -->
+    <section class="metrics-grid">
+      <article class="metric-card">
+        <div class="metric-header">
+          <span>TOTAL SYSTEM EQUITY</span>
+          <div class="metric-icon">💰</div>
+        </div>
+        <div id="total-equity" class="metric-value">$0.00</div>
+        <div class="metric-subtext">
+          <span class="badge-up">LIVE</span> <span id="masters-slaves-subtext">Across 0 Masters & 0 Connected Slaves</span>
+        </div>
+      </article>
+
+      <article class="metric-card">
+        <div class="metric-header">
+          <span>TOTAL BALANCE</span>
+          <div class="metric-icon">🏦</div>
+        </div>
+        <div id="total-balance" class="metric-value">$0.00</div>
+        <div class="metric-subtext">
+          Real-time MT5 account balances
+        </div>
+      </article>
+
+      <article class="metric-card">
+        <div class="metric-header">
+          <span>DAILY FLOATING PnL</span>
+          <div class="metric-icon">📈</div>
+        </div>
+        <div id="daily-pnl" class="metric-value pnl-positive">+$0.00</div>
+        <div class="metric-subtext">
+          Today's copied floating profit
+        </div>
+      </article>
+
+      <article class="metric-card">
+        <div class="metric-header">
+          <span>WIN RATE %</span>
+          <div class="metric-icon">🎯</div>
+        </div>
+        <div id="win-rate" class="metric-value">—%</div>
+        <div class="metric-subtext">
+          Based on real closed MT5 deal history
+        </div>
+      </article>
+
+      <article class="metric-card">
+        <div class="metric-header">
+          <span>ACTIVE COPIERS</span>
+          <div class="metric-icon">🔗</div>
+        </div>
+        <div id="active-slaves-count" class="metric-value">0</div>
+        <div class="metric-subtext">
+          Slaves mirroring master signals
+        </div>
+      </article>
+    </section>
+
+    <!-- Main Content Row: Equity Growth Curve & Master/Slave Accounts -->
+    <div class="main-grid">
+      
+      <!-- Equity Curve Chart -->
+      <section class="card">
+        <div class="card-title-bar">
+          <h2>📊 Equity Growth Performance</h2>
+          <span style="font-size: 12px; color: var(--text-muted);">Updated every tick</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="equity-chart"></canvas>
+        </div>
+      </section>
+
+      <!-- Account Quick Overview -->
+      <section class="card">
+        <div class="card-title-bar">
+          <h2>⚡ Master Account Feed</h2>
+          <span class="status-badge status-active">ACTIVE</span>
+        </div>
+        <div id="masters-list">
+          <!-- Rendered dynamically -->
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Slave Accounts Management Section -->
+    <section class="card">
+      <div class="card-title-bar">
+        <h2>🛡️ Connected MT5 Slave Accounts & Risk Rules</h2>
+        <span style="font-size: 13px; color: var(--text-muted);">Manage Lot Multipliers & Max Drawdown Guard — data populated from live EA telemetry</span>
+      </div>
+      <div id="slaves-list" class="accounts-grid">
+        <!-- Rendered dynamically via JS -->
+      </div>
+    </section>
+
+    <!-- Live Position Trade Monitor -->
+    <section class="card">
+      <div class="card-title-bar">
+        <h2>📡 Live Master & Copied Slave Positions</h2>
+        <span style="font-size: 12px; color: var(--text-muted);">Real-time MT5 position mirror status</span>
+      </div>
+      <div style="overflow-x: auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Master Ticket</th>
+              <th>Symbol</th>
+              <th>Type</th>
+              <th>Volume</th>
+              <th>Open Price</th>
+              <th>Current Price</th>
+              <th>Floating PnL</th>
+              <th>Sync Execution</th>
+            </tr>
+          </thead>
+          <tbody id="trades-table-body">
+            <!-- Dynamic Trades -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Real-time Audit & Execution Logs -->
+    <section class="card">
+      <div class="card-title-bar">
+        <h2>📜 Execution Audit & System Event Logs</h2>
+      </div>
+      <div style="overflow-x: auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Event Type</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody id="logs-table-body">
+            <!-- Dynamic Logs -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Modal: Link Slave MT5 Account -->
+  <div id="add-slave-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Link New MT5 Slave Account</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <p style="font-size: 12px; color: var(--text-muted); margin: -4px 0 16px;">
+        This dashboard never asks for or stores your MT5 password. Pre-configure the risk rules for this account below, then install <strong style="color: var(--primary);">ZenCopyTrader.mq5</strong> (Slave role) on that account's own MT5 terminal — it will connect and report real balance, equity, and positions automatically.
+      </p>
+      <form id="slave-form">
+        <div class="form-group">
+          <label>Account Name / Tag</label>
+          <input type="text" name="accountName" class="form-control" placeholder="e.g. Prop Firm Account #1" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>MT5 Login ID (Account No)</label>
+            <input type="text" name="accountNumber" class="form-control" placeholder="e.g. 901244" required>
+          </div>
+          <div class="form-group">
+            <label>MT5 Server Name</label>
+            <input type="text" name="server" class="form-control" placeholder="e.g. FTMO-MT5-Live" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Broker Name</label>
+            <input type="text" name="broker" class="form-control" placeholder="e.g. FTMO / IC Markets" required>
+          </div>
+          <div class="form-group">
+            <label>Starting Balance (optional, until EA reports real value)</label>
+            <input type="number" step="0.01" name="initialBalance" class="form-control" placeholder="0.00">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Risk Sizing Mode</label>
+            <select name="mode" class="form-control">
+              <option value="multiplier">Lot Multiplier (Ratio)</option>
+              <option value="fixed">Fixed Lot Sizing</option>
+              <option value="equity_ratio">Equity Proportion Ratio</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Multiplier / Value</label>
+            <input type="number" step="0.1" name="multiplier" class="form-control" value="1.0" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Max Spread Filter (Pips)</label>
+            <input type="number" step="0.1" name="maxSpreadPips" class="form-control" value="2.5">
+          </div>
+          <div class="form-group">
+            <label>Max Drawdown Guard (%)</label>
+            <input type="number" step="0.5" name="maxDrawdownPercent" class="form-control" value="5.0">
+          </div>
+        </div>
+
+        <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 12px;">
+          <button type="button" class="btn btn-secondary modal-close">Cancel</button>
+          <button type="submit" class="btn btn-primary">Connect MT5 Slave</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: MQL5 EA Integration Hub -->
+  <div id="ea-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>⚡ MT5 Expert Advisor (MQL5) Integration Hub</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+        Install the downloadable <strong style="color: var(--primary);">ZenCopyTrader.mq5</strong> Expert Advisor in your MT5 terminal (`MQL5/Experts`) to enable high-frequency trade copying and balance telemetry.
+      </p>
+
+      <div class="form-group">
+        <label>Server EA Sync Webhook URL (set as InpServerURL)</label>
+        <div id="ea-webhook-url" class="code-box">—</div>
+      </div>
+
+      <div class="form-group">
+        <label>Shared API Token (set as InpAPIToken)</label>
+        <div class="code-box">Use the same value you configured as EA_API_TOKEN on the server. This dashboard never generates or displays it for you — set your own and keep it private.</div>
+      </div>
+
+      <div style="margin-top: 20px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px;">
+        <button id="btn-modal-auto-install" class="btn btn-primary" style="background: linear-gradient(135deg, var(--accent-green), #059669);">
+          🚀 Auto-Install directly into MT5
+        </button>
+        <a href="/ea/ZenCopyTrader.mq5" download class="btn btn-secondary">
+          📥 Manual Download (.mq5)
+        </a>
+        <button type="button" class="btn btn-secondary modal-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

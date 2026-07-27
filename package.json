@@ -1,0 +1,13 @@
+{
+  "name": "mt5-copytrading-dashboard",
+  "version": "1.0.0",
+  "description": "Enterprise MT5 Copy Trading Dashboard and EA Signal Bridge",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["mt5", "copytrading", "forex", "ea", "mql5", "trading-dashboard"],
+  "author": "Antigravity",
+  "license": "MIT"
+}

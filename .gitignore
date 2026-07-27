@@ -1,0 +1,5 @@
+node_modules/
+store.json
+.env
+installed_ea/
+.DS_Store
