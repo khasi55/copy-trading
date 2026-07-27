@@ -60,6 +60,7 @@ let store = {
   slaves: [],
   unassigned: [],
   roleAssignments: {}, // accountNumber -> 'MASTER' | 'SLAVE', set from the dashboard, not the EA
+  knownMasterTickets: [], // open-position tickets already dispatched as OPEN copy commands
   trades: [],
   executionLogs: [],
   pendingEaCommands: []
@@ -619,6 +620,47 @@ const server = http.createServer((req, res) => {
                 }))
               }));
               master.openPositions = store.trades.length;
+
+              // Diff against last-known open tickets to generate real copy commands for active
+              // slaves — this is what actually makes trades appear on slave accounts, not just
+              // the hypothetical "copiedSlaves" volume shown for display above.
+              const currentTickets = new Set(store.trades.map(t => String(t.ticket)));
+              const previousTickets = new Set((store.knownMasterTickets || []).map(String));
+              const activeSlaves = store.slaves.filter(s => s.status === 'active');
+
+              store.trades.forEach(t => {
+                if (previousTickets.has(String(t.ticket))) return; // already dispatched
+                activeSlaves.forEach(s => {
+                  const volume = s.riskSettings.mode === 'multiplier'
+                    ? t.volume * s.riskSettings.multiplier
+                    : s.riskSettings.fixedLot;
+                  store.pendingEaCommands.push({
+                    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                    targetAccount: s.accountNumber,
+                    action: 'OPEN',
+                    masterTicket: t.ticket,
+                    symbol: t.symbol,
+                    type: t.type,
+                    volume: parseFloat(volume.toFixed(2)),
+                    sl: t.sl,
+                    tp: t.tp
+                  });
+                });
+              });
+
+              previousTickets.forEach(ticket => {
+                if (currentTickets.has(ticket)) return; // still open
+                activeSlaves.forEach(s => {
+                  store.pendingEaCommands.push({
+                    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                    targetAccount: s.accountNumber,
+                    action: 'CLOSE',
+                    masterTicket: ticket
+                  });
+                });
+              });
+
+              store.knownMasterTickets = Array.from(currentTickets);
             }
           } else {
             // Update Real Slave Account Telemetry
