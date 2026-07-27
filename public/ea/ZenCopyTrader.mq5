@@ -268,7 +268,7 @@ void SyncRealMT5Data()
    double balance    = AccountInfoDouble(ACCOUNT_BALANCE);
    double equity     = AccountInfoDouble(ACCOUNT_EQUITY);
    double margin     = AccountInfoDouble(ACCOUNT_MARGIN);
-   double freeMargin = AccountInfoDouble(ACCOUNT_FREEMARGIN);
+   double freeMargin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
    string serverName = AccountInfoString(ACCOUNT_SERVER);
    string company    = AccountInfoString(ACCOUNT_COMPANY);
    string roleStr    = (InpAccountRole == ROLE_MASTER) ? "MASTER" : "SLAVE";
